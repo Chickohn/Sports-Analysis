@@ -7,4 +7,3 @@ namespace Sports_Analysis.Models
         public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
     }
 }
-//im a goofy goober
