@@ -1,0 +1,384 @@
+@{
+    ViewData["Title"] = "Analysis";
+}
+
+<h1 class="mt-4 mb-4">Analysis</h1>
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-center align-items-center">
+            <div id="teamGoalsLoading" class="me-3" style="display:none;text-align:center;">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <div id="teamGoalsLoadingText" style="font-size:0.9em;">Loading teams...</div>
+            </div>
+            <select id="teamDropdown" class="form-select w-auto"></select>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Team Goals Over Last 15 Games</h5>
+                    <canvas id="teamGoalsChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Home vs Away Win Rate</h5>
+                    <canvas id="winRateChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Average Possession by Team</h5>
+                    <canvas id="possessionChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Yellow/Red Cards per Game</h5>
+                    <canvas id="cardsChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Shots on Target vs Total Shots</h5>
+                    <canvas id="shotsChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Cumulative Points Over Season</h5>
+                    <canvas id="pointsChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Chart instances
+        let teamGoalsChart, winRateChart, possessionChart, cardsChart, shotsChart, pointsChart;
+        let allTeams = [];
+        let loadingTeams = false;
+        let loadedOffsets = new Set();
+        let loadingComplete = false;
+        const batchSize = 100;
+        const maxRows = 4000;
+
+        async function progressiveLoadTeams() {
+            loadingTeams = true;
+            document.getElementById('teamGoalsLoading').style.display = '';
+            document.getElementById('teamGoalsLoadingText').textContent = 'Loading teams...';
+            let dropdown = document.getElementById('teamDropdown');
+            dropdown.disabled = true;
+            allTeams = [];
+            loadedOffsets = new Set();
+            loadingComplete = false;
+            let defaultIndex = 0;
+            let foundCrystalPalace = false;
+            for (let offset = 0; offset < maxRows; offset += batchSize) {
+                if (loadedOffsets.has(offset)) continue;
+                loadedOffsets.add(offset);
+                try {
+                    const res = await fetch(`/Analysis/GetTeamsBatch?offset=${offset}&limit=${batchSize}`);
+                    const teams = await res.json();
+                    let added = false;
+                    teams.forEach(team => {
+                        if (team && !allTeams.includes(team)) {
+                            allTeams.push(team);
+                            added = true;
+                        }
+                    });
+                    if (added) {
+                        allTeams.sort();
+                        dropdown.innerHTML = '';
+                        allTeams.forEach((team, idx) => {
+                            const option = document.createElement('option');
+                            option.value = team;
+                            option.textContent = team;
+                            if (team.toLowerCase() === 'crystal palace') {
+                                defaultIndex = idx;
+                                foundCrystalPalace = true;
+                            }
+                            dropdown.appendChild(option);
+                        });
+                        if (dropdown.selectedIndex === -1 || !foundCrystalPalace) {
+                            dropdown.selectedIndex = 0;
+                        } else {
+                            dropdown.selectedIndex = defaultIndex;
+                        }
+                        if (dropdown.value) {
+                            await updateAllCharts(dropdown.value);
+                        }
+                    }
+                    if (teams.length < batchSize) break;
+                } catch (e) {
+                    document.getElementById('teamGoalsLoadingText').textContent = 'Error loading teams.';
+                    break;
+                }
+            }
+            loadingTeams = false;
+            loadingComplete = true;
+            document.getElementById('teamGoalsLoading').style.display = 'none';
+            dropdown.disabled = false;
+        }
+
+        async function updateAllCharts(team) {
+            await Promise.all([
+                loadTeamGoals(team),
+                loadWinRate(team),
+                loadPossession(team),
+                loadCards(team),
+                loadShots(team),
+                loadPoints(team)
+            ]);
+        }
+
+        async function loadTeamGoals(team) {
+            document.getElementById('teamGoalsLoading').style.display = '';
+            document.getElementById('teamGoalsLoadingText').textContent = 'Loading chart...';
+            if (teamGoalsChart) teamGoalsChart.destroy();
+            try {
+                const res = await fetch(`/Analysis/GetTeamGoals?team=${encodeURIComponent(team)}`);
+                const data = await res.json();
+                const labels = data.map(d => d.date);
+                const goals = data.map(d => d.goals);
+                const ctx = document.getElementById('teamGoalsChart').getContext('2d');
+                teamGoalsChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: `Goals per Game (${team})`,
+                            data: goals,
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true }
+                        },
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Goals' } },
+                            x: { title: { display: true, text: 'Date' } }
+                        }
+                    }
+                });
+            } catch (e) {}
+            document.getElementById('teamGoalsLoading').style.display = loadingTeams ? '' : 'none';
+            document.getElementById('teamGoalsLoadingText').textContent = loadingTeams ? 'Loading teams...' : '';
+        }
+
+        async function loadWinRate(team) {
+            if (winRateChart) winRateChart.destroy();
+            try {
+                const res = await fetch(`/Analysis/GetWinRate?team=${encodeURIComponent(team)}`);
+                const data = await res.json();
+                const ctx = document.getElementById('winRateChart').getContext('2d');
+                winRateChart = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: ['Home Wins', 'Away Wins', 'Draws'],
+                        datasets: [{
+                            data: [data.homeWins, data.awayWins, data.draws],
+                            backgroundColor: [
+                                'rgba(75, 192, 192, 0.7)',
+                                'rgba(255, 159, 64, 0.7)',
+                                'rgba(201, 203, 207, 0.7)'
+                            ],
+                            borderColor: [
+                                'rgba(75, 192, 192, 1)',
+                                'rgba(255, 159, 64, 1)',
+                                'rgba(201, 203, 207, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true }
+                        }
+                    }
+                });
+            } catch (e) {}
+        }
+
+        async function loadPossession(team) {
+            if (possessionChart) possessionChart.destroy();
+            try {
+                const res = await fetch(`/Analysis/GetPossession?team=${encodeURIComponent(team)}`);
+                const data = await res.json();
+                const ctx = document.getElementById('possessionChart').getContext('2d');
+                possessionChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: [team, 'League Avg'],
+                        datasets: [{
+                            label: 'Avg Possession %',
+                            data: [data.avgPossession, data.leagueAvg],
+                            backgroundColor: [
+                                'rgba(153, 102, 255, 0.7)',
+                                'rgba(201, 203, 207, 0.7)'
+                            ],
+                            borderColor: [
+                                'rgba(153, 102, 255, 1)',
+                                'rgba(201, 203, 207, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Possession (%)' } }
+                        }
+                    }
+                });
+            } catch (e) {}
+        }
+
+        async function loadCards(team) {
+            if (cardsChart) cardsChart.destroy();
+            try {
+                const res = await fetch(`/Analysis/GetCards?team=${encodeURIComponent(team)}`);
+                const data = await res.json();
+                const ctx = document.getElementById('cardsChart').getContext('2d');
+                cardsChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.map(d => d.date),
+                        datasets: [
+                            {
+                                label: 'Yellow Cards',
+                                data: data.map(d => d.yellow),
+                                backgroundColor: 'rgba(255, 205, 86, 0.7)',
+                                borderColor: 'rgba(255, 205, 86, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Red Cards',
+                                data: data.map(d => d.red),
+                                backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true }
+                        },
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Cards' } },
+                            x: { title: { display: true, text: 'Date' } }
+                        }
+                    }
+                });
+            } catch (e) {}
+        }
+
+        async function loadShots(team) {
+            if (shotsChart) shotsChart.destroy();
+            try {
+                const res = await fetch(`/Analysis/GetShots?team=${encodeURIComponent(team)}`);
+                const data = await res.json();
+                const ctx = document.getElementById('shotsChart').getContext('2d');
+                shotsChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.map(d => d.date),
+                        datasets: [
+                            {
+                                label: 'Total Shots',
+                                data: data.map(d => d.shots),
+                                backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                                borderColor: 'rgba(54, 162, 235, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Shots on Target',
+                                data: data.map(d => d.shotsOnTarget),
+                                backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true }
+                        },
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Shots' } },
+                            x: { title: { display: true, text: 'Date' } }
+                        }
+                    }
+                });
+            } catch (e) {}
+        }
+
+        async function loadPoints(team) {
+            if (pointsChart) pointsChart.destroy();
+            try {
+                const res = await fetch(`/Analysis/GetPoints?team=${encodeURIComponent(team)}`);
+                const data = await res.json();
+                const ctx = document.getElementById('pointsChart').getContext('2d');
+                pointsChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.map(d => d.date),
+                        datasets: [{
+                            label: 'Cumulative Points',
+                            data: data.map(d => d.points),
+                            borderColor: 'rgba(255, 159, 64, 1)',
+                            backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true }
+                        },
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Points' } },
+                            x: { title: { display: true, text: 'Date' } }
+                        }
+                    }
+                });
+            } catch (e) {}
+        }
+
+        document.getElementById('teamDropdown').addEventListener('change', function() {
+            updateAllCharts(this.value);
+        });
+
+        progressiveLoadTeams();
+    </script>
+} 

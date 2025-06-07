@@ -12,6 +12,7 @@ namespace Sports_Analysis.Services
     public interface IFootballDataService
     {
         Task<List<FootballMatch>> GetMatchesAsync(int offset = 0, int limit = 100);
+        Task<List<FootballMatch>> GetAllMatchesAsync();
     }
 
     public class FootballDataService : IFootballDataService
@@ -19,6 +20,11 @@ namespace Sports_Analysis.Services
         private readonly HttpClient _httpClient;
         private readonly ILogger<FootballDataService> _logger;
         private const string BaseUrl = "https://datasets-server.huggingface.co/rows";
+        private const int BatchSize = 100;
+        private const int MaxRows = 5000;
+        private static List<FootballMatch>? _allMatchesCache = null;
+        private static DateTime _cacheTimestamp = DateTime.MinValue;
+        private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(10);
 
         public FootballDataService(HttpClient httpClient, ILogger<FootballDataService> logger)
         {
@@ -27,6 +33,36 @@ namespace Sports_Analysis.Services
         }
 
         public async Task<List<FootballMatch>> GetMatchesAsync(int offset = 0, int limit = 100)
+        {
+            // Use cache if available and not expired
+            if (_allMatchesCache != null && (DateTime.UtcNow - _cacheTimestamp) < CacheDuration)
+            {
+                return _allMatchesCache.Skip(offset).Take(limit).ToList();
+            }
+            return await FetchMatchesFromApi(offset, limit);
+        }
+
+        public async Task<List<FootballMatch>> GetAllMatchesAsync()
+        {
+            if (_allMatchesCache != null && (DateTime.UtcNow - _cacheTimestamp) < CacheDuration)
+            {
+                return _allMatchesCache;
+            }
+            // Fetch all in batches
+            var allMatches = new List<FootballMatch>();
+            for (int offset = 0; offset < MaxRows; offset += BatchSize)
+            {
+                var batch = await FetchMatchesFromApi(offset, BatchSize);
+                if (batch.Count == 0) break;
+                allMatches.AddRange(batch);
+                if (batch.Count < BatchSize) break;
+            }
+            _allMatchesCache = allMatches;
+            _cacheTimestamp = DateTime.UtcNow;
+            return allMatches;
+        }
+
+        private async Task<List<FootballMatch>> FetchMatchesFromApi(int offset, int limit)
         {
             try
             {
