@@ -25,9 +25,10 @@ namespace Sports_Analysis.Controllers
         [HttpGet]
         public async Task<IActionResult> GetTeamsBatch(int offset = 0, int limit = 100)
         {
-            var matches = await _footballDataService.GetMatchesAsync(offset, limit);
-            var teams = matches.Select(m => m.HomeTeam)
-                .Concat(matches.Select(m => m.AwayTeam))
+            // Use all cached matches to get all unique teams
+            var allMatches = await _footballDataService.GetAllMatchesAsync();
+            var teams = allMatches.Select(m => m.HomeTeam)
+                .Concat(allMatches.Select(m => m.AwayTeam))
                 .Where(t => !string.IsNullOrEmpty(t) && t != "Unknown")
                 .Distinct()
                 .OrderBy(t => t)

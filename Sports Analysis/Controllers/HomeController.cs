@@ -4,6 +4,7 @@ using Sports_Analysis.Models;
 using Sports_Analysis.Services;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using System.Linq;
 
 namespace Sports_Analysis.Controllers
 {
@@ -23,12 +24,13 @@ namespace Sports_Analysis.Controllers
             try
             {
                 _logger.LogInformation("Fetching initial matches data");
-                var matches = await _footballDataService.GetMatchesAsync(0, 50);
+                var matches = await _footballDataService.GetMatchesAsync(0, 1000);
+                matches = matches.OrderByDescending(m => m.Date).ToList();
                 _logger.LogInformation($"Retrieved {matches.Count} matches");
 
                 var viewModel = new FootballMatchViewModel
                 {
-                    Matches = matches,
+                    Matches = matches.Take(50).ToList(),
                     CurrentPage = 0,
                     PageSize = 50
                 };
