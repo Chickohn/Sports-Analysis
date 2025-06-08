@@ -13,6 +13,7 @@ builder.Services.AddDbContext<FootballDbContext>(options =>
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IFootballDataService, FootballDataService>();
+builder.Services.AddScoped<CsvImportService>();
 
 var app = builder.Build();
 
