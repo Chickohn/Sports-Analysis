@@ -75,62 +75,54 @@
         let teamGoalsChart, winRateChart, possessionChart, cardsChart, shotsChart, pointsChart;
         let allTeams = [];
         let loadingTeams = false;
-        let loadedOffsets = new Set();
         let loadingComplete = false;
-        const batchSize = 100;
-        const maxRows = 4000;
 
-        async function progressiveLoadTeams() {
+        async function loadTeamsFromCacheOrApi() {
             loadingTeams = true;
             document.getElementById('teamGoalsLoading').style.display = '';
             document.getElementById('teamGoalsLoadingText').textContent = 'Loading teams...';
             let dropdown = document.getElementById('teamDropdown');
             dropdown.disabled = true;
             allTeams = [];
-            loadedOffsets = new Set();
-            loadingComplete = false;
             let defaultIndex = 0;
             let foundCrystalPalace = false;
-            for (let offset = 0; offset < maxRows; offset += batchSize) {
-                if (loadedOffsets.has(offset)) continue;
-                loadedOffsets.add(offset);
+            let matches = window.footballMatchesCache;
+            if (!matches) {
+                // Try to fetch from API if not cached
                 try {
-                    const res = await fetch(`/Analysis/GetTeamsBatch?offset=${offset}&limit=${batchSize}`);
-                    const teams = await res.json();
-                    let added = false;
-                    teams.forEach(team => {
-                        if (team && !allTeams.includes(team)) {
-                            allTeams.push(team);
-                            added = true;
-                        }
-                    });
-                    if (added) {
-                        allTeams.sort();
-                        dropdown.innerHTML = '';
-                        allTeams.forEach((team, idx) => {
-                            const option = document.createElement('option');
-                            option.value = team;
-                            option.textContent = team;
-                            if (team.toLowerCase() === 'crystal palace') {
-                                defaultIndex = idx;
-                                foundCrystalPalace = true;
-                            }
-                            dropdown.appendChild(option);
-                        });
-                        if (dropdown.selectedIndex === -1 || !foundCrystalPalace) {
-                            dropdown.selectedIndex = 0;
-                        } else {
-                            dropdown.selectedIndex = defaultIndex;
-                        }
-                        if (dropdown.value) {
-                            await updateAllCharts(dropdown.value);
-                        }
-                    }
-                    if (teams.length < batchSize) break;
+                    const response = await fetch('/api/FootballMatchesApi');
+                    if (!response.ok) throw new Error('Server not ready');
+                    matches = await response.json();
+                    window.footballMatchesCache = matches;
                 } catch (e) {
                     document.getElementById('teamGoalsLoadingText').textContent = 'Error loading teams.';
-                    break;
+                    dropdown.disabled = true;
+                    return;
                 }
+            }
+            // Extract unique teams
+            allTeams = Array.from(new Set([
+                ...matches.map(m => m.homeTeam),
+                ...matches.map(m => m.awayTeam)
+            ].filter(t => t && t !== 'Unknown'))).sort();
+            dropdown.innerHTML = '';
+            allTeams.forEach((team, idx) => {
+                const option = document.createElement('option');
+                option.value = team;
+                option.textContent = team;
+                if (team.toLowerCase() === 'crystal palace') {
+                    defaultIndex = idx;
+                    foundCrystalPalace = true;
+                }
+                dropdown.appendChild(option);
+            });
+            if (dropdown.selectedIndex === -1 || !foundCrystalPalace) {
+                dropdown.selectedIndex = 0;
+            } else {
+                dropdown.selectedIndex = defaultIndex;
+            }
+            if (dropdown.value) {
+                await updateAllCharts(dropdown.value, matches);
             }
             loadingTeams = false;
             loadingComplete = true;
@@ -138,24 +130,37 @@
             dropdown.disabled = false;
         }
 
-        async function updateAllCharts(team) {
+        async function updateAllCharts(team, matches) {
             await Promise.all([
-                loadTeamGoals(team),
-                loadWinRate(team),
-                loadPossession(team),
-                loadCards(team),
-                loadShots(team),
-                loadPoints(team)
+                loadTeamGoals(team, matches),
+                loadWinRate(team, matches),
+                loadPossession(team, matches),
+                loadCards(team, matches),
+                loadShots(team, matches),
+                loadPoints(team, matches)
             ]);
         }
 
-        async function loadTeamGoals(team) {
+        // The following functions will use cached matches if available, otherwise fallback to API endpoints
+        async function loadTeamGoals(team, matches) {
             document.getElementById('teamGoalsLoading').style.display = '';
             document.getElementById('teamGoalsLoadingText').textContent = 'Loading chart...';
             if (teamGoalsChart) teamGoalsChart.destroy();
             try {
-                const res = await fetch(`/Analysis/GetTeamGoals?team=${encodeURIComponent(team)}`);
-                const data = await res.json();
+                let data;
+                if (matches) {
+                    let teamMatches = matches.filter(m => m.homeTeam === team || m.awayTeam === team)
+                        .sort((a, b) => new Date(b.date) - new Date(a.date))
+                        .slice(0, 15)
+                        .sort((a, b) => new Date(a.date) - new Date(b.date));
+                    data = teamMatches.map(m => ({
+                        date: new Date(m.date).toISOString().slice(0, 10),
+                        goals: m.homeTeam === team ? m.homeGoals : m.awayGoals
+                    }));
+                } else {
+                    const res = await fetch(`/Analysis/GetTeamGoals?team=${encodeURIComponent(team)}`);
+                    data = await res.json();
+                }
                 const labels = data.map(d => d.date);
                 const goals = data.map(d => d.goals);
                 const ctx = document.getElementById('teamGoalsChart').getContext('2d');
@@ -188,11 +193,25 @@
             document.getElementById('teamGoalsLoadingText').textContent = loadingTeams ? 'Loading teams...' : '';
         }
 
-        async function loadWinRate(team) {
+        async function loadWinRate(team, matches) {
             if (winRateChart) winRateChart.destroy();
             try {
-                const res = await fetch(`/Analysis/GetWinRate?team=${encodeURIComponent(team)}`);
-                const data = await res.json();
+                let data;
+                if (matches) {
+                    let teamMatches = matches.filter(m => m.homeTeam === team || m.awayTeam === team);
+                    let homeWins = 0;
+                    let awayWins = 0;
+                    let draws = 0;
+                    teamMatches.forEach(m => {
+                        if (m.homeTeam === team && m.homeGoals > m.awayGoals) homeWins++;
+                        if (m.awayTeam === team && m.awayGoals > m.homeGoals) awayWins++;
+                        if (m.homeTeam === team && m.homeGoals === m.awayGoals) draws++;
+                    });
+                    data = { homeWins, awayWins, draws };
+                } else {
+                    const res = await fetch(`/Analysis/GetWinRate?team=${encodeURIComponent(team)}`);
+                    data = await res.json();
+                }
                 const ctx = document.getElementById('winRateChart').getContext('2d');
                 winRateChart = new Chart(ctx, {
                     type: 'pie',
@@ -223,11 +242,22 @@
             } catch (e) {}
         }
 
-        async function loadPossession(team) {
+        async function loadPossession(team, matches) {
             if (possessionChart) possessionChart.destroy();
             try {
-                const res = await fetch(`/Analysis/GetPossession?team=${encodeURIComponent(team)}`);
-                const data = await res.json();
+                let data;
+                if (matches) {
+                    let teamMatches = matches.filter(m => m.homeTeam === team || m.awayTeam === team);
+                    let totalPossession = 0;
+                    teamMatches.forEach(m => {
+                        if (m.homeTeam === team) totalPossession += m.homePossession;
+                        if (m.awayTeam === team) totalPossession += m.awayPossession;
+                    });
+                    data = { avgPossession: totalPossession / teamMatches.length, leagueAvg: 50 };
+                } else {
+                    const res = await fetch(`/Analysis/GetPossession?team=${encodeURIComponent(team)}`);
+                    data = await res.json();
+                }
                 const ctx = document.getElementById('possessionChart').getContext('2d');
                 possessionChart = new Chart(ctx, {
                     type: 'bar',
@@ -260,11 +290,29 @@
             } catch (e) {}
         }
 
-        async function loadCards(team) {
+        async function loadCards(team, matches) {
             if (cardsChart) cardsChart.destroy();
             try {
-                const res = await fetch(`/Analysis/GetCards?team=${encodeURIComponent(team)}`);
-                const data = await res.json();
+                let data;
+                if (matches) {
+                    let teamMatches = matches.filter(m => m.homeTeam === team || m.awayTeam === team);
+                    let yellowCards = 0;
+                    let redCards = 0;
+                    teamMatches.forEach(m => {
+                        if (m.homeTeam === team) {
+                            yellowCards += m.homeYellowCards;
+                            redCards += m.homeRedCards;
+                        }
+                        if (m.awayTeam === team) {
+                            yellowCards += m.awayYellowCards;
+                            redCards += m.awayRedCards;
+                        }
+                    });
+                    data = [{ date: new Date().toISOString().slice(0, 10), yellow: yellowCards, red: redCards }];
+                } else {
+                    const res = await fetch(`/Analysis/GetCards?team=${encodeURIComponent(team)}`);
+                    data = await res.json();
+                }
                 const ctx = document.getElementById('cardsChart').getContext('2d');
                 cardsChart = new Chart(ctx, {
                     type: 'bar',
@@ -301,11 +349,29 @@
             } catch (e) {}
         }
 
-        async function loadShots(team) {
+        async function loadShots(team, matches) {
             if (shotsChart) shotsChart.destroy();
             try {
-                const res = await fetch(`/Analysis/GetShots?team=${encodeURIComponent(team)}`);
-                const data = await res.json();
+                let data;
+                if (matches) {
+                    let teamMatches = matches.filter(m => m.homeTeam === team || m.awayTeam === team);
+                    let totalShots = 0;
+                    let shotsOnTarget = 0;
+                    teamMatches.forEach(m => {
+                        if (m.homeTeam === team) {
+                            totalShots += m.homeShots;
+                            shotsOnTarget += m.homeShotsOnTarget;
+                        }
+                        if (m.awayTeam === team) {
+                            totalShots += m.awayShots;
+                            shotsOnTarget += m.awayShotsOnTarget;
+                        }
+                    });
+                    data = [{ date: new Date().toISOString().slice(0, 10), shots: totalShots, shotsOnTarget: shotsOnTarget }];
+                } else {
+                    const res = await fetch(`/Analysis/GetShots?team=${encodeURIComponent(team)}`);
+                    data = await res.json();
+                }
                 const ctx = document.getElementById('shotsChart').getContext('2d');
                 shotsChart = new Chart(ctx, {
                     type: 'bar',
@@ -342,11 +408,22 @@
             } catch (e) {}
         }
 
-        async function loadPoints(team) {
+        async function loadPoints(team, matches) {
             if (pointsChart) pointsChart.destroy();
             try {
-                const res = await fetch(`/Analysis/GetPoints?team=${encodeURIComponent(team)}`);
-                const data = await res.json();
+                let data;
+                if (matches) {
+                    let teamMatches = matches.filter(m => m.homeTeam === team || m.awayTeam === team);
+                    let points = 0;
+                    teamMatches.forEach(m => {
+                        if (m.homeTeam === team) points += m.homeGoals;
+                        if (m.awayTeam === team) points += m.awayGoals;
+                    });
+                    data = [{ date: new Date().toISOString().slice(0, 10), points: points }];
+                } else {
+                    const res = await fetch(`/Analysis/GetPoints?team=${encodeURIComponent(team)}`);
+                    data = await res.json();
+                }
                 const ctx = document.getElementById('pointsChart').getContext('2d');
                 pointsChart = new Chart(ctx, {
                     type: 'line',
@@ -375,10 +452,12 @@
             } catch (e) {}
         }
 
+        // On page load
+        loadTeamsFromCacheOrApi();
         document.getElementById('teamDropdown').addEventListener('change', function() {
-            updateAllCharts(this.value);
+            const team = this.value;
+            const matches = window.footballMatchesCache;
+            updateAllCharts(team, matches);
         });
-
-        progressiveLoadTeams();
     </script>
 } 

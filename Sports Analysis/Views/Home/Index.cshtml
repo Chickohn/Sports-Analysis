@@ -5,106 +5,84 @@
 }
 
 <div class="container mt-4">
-    <h1>Football Matches</h1>
-    
-    <div class="row mb-4">
-        <div class="col">
-            <input type="text" id="searchInput" class="form-control" placeholder="Search matches...">
+    <h2>Football Matches</h2>
+    <div id="loadingSpinner" class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
         </div>
+        <div id="loadingMessage">Loading data from server (This may take add while)...</div>
     </div>
-
-    <div class="table-responsive">
+    <div id="errorMessage" class="alert alert-danger d-none text-center"></div>
+    <div class="table-responsive d-none" id="matchesTableContainer">
         <table class="table table-striped table-hover">
             <thead>
                 <tr>
                     <th>Date</th>
-                    <th>Season</th>
                     <th>Home Team</th>
-                    <th>Score</th>
                     <th>Away Team</th>
-                    <th>Home Possession</th>
-                    <th>Away Possession</th>
-                    <th>Home Shots</th>
-                    <th>Away Shots</th>
+                    <th>Score</th>
+                    <th>Possession</th>
+                    <th>Shots</th>
                 </tr>
             </thead>
             <tbody id="matchesTableBody">
-                @if (Model.Matches.Any())
-                {
-                    @await Html.PartialAsync("_MatchesTable", Model.Matches)
-                }
-                else
-                {
-                    <tr>
-                        <td colspan="9" class="text-center">No matches found. Please try again later.</td>
-                    </tr>
-                }
+                <!-- Data will be inserted here -->
             </tbody>
         </table>
-    </div>
-
-    <div id="loadingSpinner" class="text-center d-none">
-        <div class="spinner-border" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
     </div>
 </div>
 
 @section Scripts {
-    <script>
-        let currentPage = @Model.CurrentPage;
-        const pageSize = @Model.PageSize;
-        let isLoading = false;
-        let searchTimeout;
+<script>
+    // In-memory cache for matches
+    window.footballMatchesCache = null;
+    let retryCount = 0;
+    const maxRetries = 6;
+    const retryDelay = 3000; // 3 seconds
 
-        // Infinite scroll
-        window.addEventListener('scroll', function() {
-            if (isLoading) return;
-
-            const {scrollTop, scrollHeight, clientHeight} = document.documentElement;
-            if (scrollTop + clientHeight >= scrollHeight - 5) {
-                loadMoreMatches();
-            }
-        });
-
-        // Search functionality
-        document.getElementById('searchInput').addEventListener('input', function(e) {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
-                const searchTerm = e.target.value.toLowerCase();
-                filterTable(searchTerm);
-            }, 300);
-        });
-
-        function filterTable(searchTerm) {
-            const rows = document.querySelectorAll('#matchesTableBody tr');
-            rows.forEach(row => {
-                const text = row.textContent.toLowerCase();
-                row.style.display = text.includes(searchTerm) ? '' : 'none';
-            });
-        }
-
-        async function loadMoreMatches() {
-            if (isLoading) return;
-            
-            isLoading = true;
-            document.getElementById('loadingSpinner').classList.remove('d-none');
-            
-            try {
-                const response = await fetch(`/Home/LoadMore?page=${currentPage + 1}&pageSize=${pageSize}`);
-                if (!response.ok) throw new Error('Network response was not ok');
-                
-                const html = await response.text();
-                if (html.trim()) {
-                    document.getElementById('matchesTableBody').insertAdjacentHTML('beforeend', html);
-                    currentPage++;
-                }
-            } catch (error) {
-                console.error('Error loading more matches:', error);
-            } finally {
-                isLoading = false;
+    async function fetchMatches() {
+        document.getElementById('loadingSpinner').classList.remove('d-none');
+        document.getElementById('matchesTableContainer').classList.add('d-none');
+        document.getElementById('errorMessage').classList.add('d-none');
+        document.getElementById('loadingMessage').innerText = retryCount === 0 ? 'Loading data from server...' : 'Waking up server, please wait...';
+        try {
+            const response = await fetch('/api/FootballMatchesApi');
+            if (!response.ok) throw new Error('Server not ready');
+            const matches = await response.json();
+            window.footballMatchesCache = matches;
+            renderTable(matches);
+            document.getElementById('loadingSpinner').classList.add('d-none');
+            document.getElementById('matchesTableContainer').classList.remove('d-none');
+        } catch (err) {
+            if (retryCount < maxRetries) {
+                retryCount++;
+                setTimeout(fetchMatches, retryDelay);
+            } else {
                 document.getElementById('loadingSpinner').classList.add('d-none');
+                document.getElementById('errorMessage').innerText = 'Failed to load data from server. Please try again later.';
+                document.getElementById('errorMessage').classList.remove('d-none');
             }
         }
-    </script>
+    }
+
+    function renderTable(matches) {
+        const tbody = document.getElementById('matchesTableBody');
+        tbody.innerHTML = '';
+        matches.forEach(match => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${new Date(match.date).toLocaleDateString()}</td>
+                <td>${match.homeTeam}</td>
+                <td>${match.awayTeam}</td>
+                <td>${match.homeGoals} - ${match.awayGoals}</td>
+                <td>${match.homePossession}% - ${match.awayPossession}%</td>
+                <td>${match.homeShots} (${match.homeShotsOnTarget}) - ${match.awayShots} (${match.awayShotsOnTarget})</td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    // On page load
+    fetchMatches();
+</script>
 }
