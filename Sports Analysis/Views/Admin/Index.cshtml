@@ -1,0 +1,464 @@
+@{
+    ViewData["Title"] = "Admin";
+}
+
+<div class="container mt-5">
+    <div id="adminLoginBox" class="row justify-content-center">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title mb-4">Admin Login</h4>
+                    <div class="mb-3">
+                        <label for="adminUsername" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="adminUsername" autocomplete="username">
+                    </div>
+                    <div class="mb-3">
+                        <label for="adminPassword" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="adminPassword" autocomplete="current-password">
+                    </div>
+                    <div id="adminLoginError" class="alert alert-danger d-none"></div>
+                    <button class="btn btn-primary w-100" onclick="adminLogin()">Login</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="adminContent" class="d-none mt-5">
+        <h3>Welcome, Admin!</h3>
+        <div id="adminActionMessage" class="alert d-none"></div>
+        <div class="mb-4">
+            <h5>Upload CSV as New Table</h5>
+            <form id="uploadCsvForm" onsubmit="uploadCsvTable(event)" enctype="multipart/form-data">
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-4">
+                        <input type="file" class="form-control" id="csvFileInput" name="file" accept=".csv" required>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" id="csvTableName" name="tableName" placeholder="New Table Name" required>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">Upload</button>
+                    </div>
+                </div>
+            </form>
+            <div id="csvUploadMessage" class="alert d-none mt-2"></div>
+        </div>
+        <div class="mb-4">
+            <h5>Select Table to View</h5>
+            <select id="tableSelector" class="form-select w-auto mb-2" onchange="fetchSelectedTable()"></select>
+            <button class="btn btn-secondary mb-2" onclick="fetchTables()">Refresh Table List</button>
+        </div>
+        <div class="mb-4">
+            <h5>Selected Table Data</h5>
+            <div id="selectedTableLoading" class="text-center d-none">
+                <div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped">
+                    <thead id="selectedTableHead"></thead>
+                    <tbody id="selectedTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+        <div id="adminNotification" class="alert d-none position-fixed top-0 end-0 m-3" style="z-index:9999; min-width:250px;"></div>
+    </div>
+</div>
+
+@section Scripts {
+<style>
+    .sort-arrow { display: none; margin-left: 4px; font-size: 1em; }
+    th.sortable { cursor: pointer; position: relative; }
+    th.sortable:hover .sort-arrow, th.sortable.active .sort-arrow { display: inline; }
+</style>
+<script>
+    let currentSort = { column: null, direction: 'desc' };
+    let matchesCache = [];
+    let selectedTableColumns = [];
+    let selectedTableTypes = [];
+    let selectedTableName = null;
+    let selectedTableData = [];
+
+    function adminLogin() {
+        const username = document.getElementById('adminUsername').value;
+        const password = document.getElementById('adminPassword').value;
+        const errorBox = document.getElementById('adminLoginError');
+        if (username === 'Beckohn' && password === 'Jacktherapper12$') {
+            document.getElementById('adminLoginBox').classList.add('d-none');
+            document.getElementById('adminContent').classList.remove('d-none');
+        } else {
+            errorBox.textContent = 'Invalid username or password.';
+            errorBox.classList.remove('d-none');
+        }
+    }
+
+    async function fetchMatches() {
+        setLoading(true);
+        try {
+            const response = await fetch('/api/FootballMatchesApi');
+            const matches = await response.json();
+            matchesCache = matches;
+            renderMatchesTable(matches);
+            setLoading(false);
+        } catch (err) {
+            setLoading(false);
+            showMessage('Failed to fetch matches.', 'danger');
+        }
+    }
+
+    function renderMatchesTable(matches) {
+        const tbody = document.getElementById('adminMatchesTableBody');
+        tbody.innerHTML = '';
+        matches.forEach(match => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${new Date(match.date).toLocaleDateString()}</td>
+                <td>${match.homeTeam}</td>
+                <td>${match.awayTeam}</td>
+                <td>${match.homeGoals} - ${match.awayGoals}</td>
+                <td>${match.season || ''}</td>
+                <td><button class="btn btn-danger btn-sm" onclick="deleteMatch(${match.id})">Delete</button></td>
+            `;
+            tbody.appendChild(row);
+        });
+        updateSortArrows();
+    }
+
+    function sortTable(column) {
+        if (currentSort.column === column) {
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSort.column = column;
+            currentSort.direction = 'desc';
+        }
+        let sorted = [...matchesCache];
+        sorted.sort((a, b) => {
+            let aValue, bValue;
+            if (column === 'score') {
+                aValue = (a.homeGoals || 0) - (a.awayGoals || 0);
+                bValue = (b.homeGoals || 0) - (b.awayGoals || 0);
+            } else if (column === 'date') {
+                aValue = new Date(a.date);
+                bValue = new Date(b.date);
+            } else {
+                aValue = (a[column] || '').toString().toLowerCase();
+                bValue = (b[column] || '').toString().toLowerCase();
+            }
+            if (aValue < bValue) return currentSort.direction === 'asc' ? -1 : 1;
+            if (aValue > bValue) return currentSort.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+        renderMatchesTable(sorted);
+    }
+
+    function updateSortArrows() {
+        const columns = ['date', 'homeTeam', 'awayTeam', 'score', 'season'];
+        columns.forEach(col => {
+            const arrow = document.getElementById('sort-arrow-' + col);
+            if (currentSort.column === col) {
+                arrow.innerHTML = currentSort.direction === 'asc' ? '&#8595;' : '&#8593;';
+                arrow.parentElement.classList.add('active');
+            } else {
+                arrow.innerHTML = '';
+                arrow.parentElement.classList.remove('active');
+            }
+        });
+    }
+
+    async function addMatch(event) {
+        event.preventDefault();
+        const match = {
+            date: document.getElementById('matchDate').value,
+            homeTeam: document.getElementById('homeTeam').value,
+            awayTeam: document.getElementById('awayTeam').value,
+            homeGoals: parseInt(document.getElementById('homeGoals').value),
+            awayGoals: parseInt(document.getElementById('awayGoals').value),
+            season: document.getElementById('season').value
+        };
+        try {
+            const response = await fetch('/api/FootballMatchesApi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(match)
+            });
+            if (response.ok) {
+                showMessage('Match added successfully!', 'success');
+                fetchMatches();
+                document.getElementById('addMatchForm').reset();
+            } else {
+                showMessage('Failed to add match.', 'danger');
+            }
+        } catch (err) {
+            showMessage('Failed to add match.', 'danger');
+        }
+    }
+
+    async function deleteMatch(id) {
+        if (!confirm('Are you sure you want to delete this match?')) return;
+        try {
+            const response = await fetch(`/api/FootballMatchesApi/${id}`, { method: 'DELETE' });
+            if (response.ok) {
+                showMessage('Match deleted successfully!', 'success');
+                fetchMatches();
+            } else {
+                showMessage('Failed to delete match.', 'danger');
+            }
+        } catch (err) {
+            showMessage('Failed to delete match.', 'danger');
+        }
+    }
+
+    function setLoading(isLoading) {
+        document.getElementById('adminMatchesLoading').classList.toggle('d-none', !isLoading);
+    }
+
+    function showMessage(msg, type) {
+        const box = document.getElementById('adminActionMessage');
+        box.textContent = msg;
+        box.className = `alert alert-${type}`;
+        box.classList.remove('d-none');
+        setTimeout(() => box.classList.add('d-none'), 3000);
+    }
+
+    async function uploadCsvTable(event) {
+        event.preventDefault();
+        const fileInput = document.getElementById('csvFileInput');
+        const tableNameInput = document.getElementById('csvTableName');
+        const msgBox = document.getElementById('csvUploadMessage');
+        if (!fileInput.files.length || !tableNameInput.value) return;
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('tableName', tableNameInput.value);
+        msgBox.className = 'alert alert-info';
+        msgBox.textContent = 'Uploading...';
+        msgBox.classList.remove('d-none');
+        try {
+            const response = await fetch('/api/AdminApi/UploadCsvTable', {
+                method: 'POST',
+                body: formData
+            });
+            const text = await response.text();
+            if (response.ok) {
+                msgBox.className = 'alert alert-success';
+                msgBox.textContent = text;
+                fetchTables();
+            } else {
+                msgBox.className = 'alert alert-danger';
+                msgBox.textContent = text;
+            }
+        } catch (err) {
+            msgBox.className = 'alert alert-danger';
+            msgBox.textContent = 'Upload failed.';
+        }
+    }
+
+    async function fetchTables() {
+        const selector = document.getElementById('tableSelector');
+        selector.innerHTML = '';
+        try {
+            const response = await fetch('/api/AdminApi/Tables');
+            const tables = await response.json();
+            tables.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                selector.appendChild(opt);
+            });
+            if (tables.length) fetchSelectedTable();
+        } catch (err) {
+            selector.innerHTML = '<option>Error loading tables</option>';
+        }
+    }
+
+    async function fetchSelectedTable() {
+        const selector = document.getElementById('tableSelector');
+        const tableName = selector.value;
+        selectedTableName = tableName;
+        if (!tableName) return;
+        setSelectedTableLoading(true);
+        try {
+            const response = await fetch(`/api/AdminApi/TableData/${tableName}`);
+            const data = await response.json();
+            selectedTableData = data;
+            renderSelectedTable(data);
+            setSelectedTableLoading(false);
+        } catch (err) {
+            setSelectedTableLoading(false);
+            document.getElementById('selectedTableHead').innerHTML = '';
+            document.getElementById('selectedTableBody').innerHTML = '<tr><td colspan="100">Error loading table data</td></tr>';
+        }
+    }
+
+    function guessType(col, values) {
+        if (col.toLowerCase().includes('date')) return 'date';
+        if (values.every(v => !isNaN(v) && v !== null && v !== '')) return 'number';
+        return 'text';
+    }
+
+    function renderSelectedTable(data) {
+        const thead = document.getElementById('selectedTableHead');
+        const tbody = document.getElementById('selectedTableBody');
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        if (!data.length) {
+            tbody.innerHTML = '<tr><td colspan="100">No data</td></tr>';
+            return;
+        }
+        // Render header with sorting
+        const headerRow = document.createElement('tr');
+        selectedTableColumns = Object.keys(data[0]);
+        selectedTableTypes = selectedTableColumns.map(col => guessType(col, data.map(row => row[col])));
+        selectedTableColumns.forEach((col, idx) => {
+            const th = document.createElement('th');
+            th.className = 'sortable';
+            th.style.userSelect = 'none';
+            th.onclick = () => sortSelectedTable(col);
+            th.innerHTML = `${col} <span class="sort-arrow" id="sort-arrow-${col}"></span>`;
+            headerRow.appendChild(th);
+        });
+        // Add Save column
+        const thSave = document.createElement('th');
+        thSave.textContent = 'Save';
+        headerRow.appendChild(thSave);
+        thead.appendChild(headerRow);
+        // Render input row for adding new data
+        const inputRow = document.createElement('tr');
+        selectedTableColumns.forEach((col, idx) => {
+            const td = document.createElement('td');
+            let inputType = selectedTableTypes[idx];
+            let input = document.createElement('input');
+            input.className = 'form-control';
+            input.placeholder = col;
+            input.type = inputType;
+            input.id = `addRow-${col}`;
+            td.appendChild(input);
+            inputRow.appendChild(td);
+        });
+        // Save button
+        const tdSave = document.createElement('td');
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'btn btn-success btn-sm';
+        saveBtn.textContent = 'Save';
+        saveBtn.onclick = addRowToTable;
+        tdSave.appendChild(saveBtn);
+        inputRow.appendChild(tdSave);
+        tbody.appendChild(inputRow);
+        // Sort data if needed
+        let displayData = [...data];
+        if (currentSort.column) {
+            displayData.sort((a, b) => {
+                let aValue = a[currentSort.column];
+                let bValue = b[currentSort.column];
+                if (selectedTableTypes[selectedTableColumns.indexOf(currentSort.column)] === 'number') {
+                    aValue = parseFloat(aValue);
+                    bValue = parseFloat(bValue);
+                } else if (selectedTableTypes[selectedTableColumns.indexOf(currentSort.column)] === 'date') {
+                    aValue = new Date(aValue);
+                    bValue = new Date(bValue);
+                } else {
+                    aValue = (aValue || '').toString().toLowerCase();
+                    bValue = (bValue || '').toString().toLowerCase();
+                }
+                if (aValue < bValue) return currentSort.direction === 'asc' ? -1 : 1;
+                if (aValue > bValue) return currentSort.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+        // Render data rows
+        displayData.forEach((row, rowIdx) => {
+            const tr = document.createElement('tr');
+            selectedTableColumns.forEach(col => {
+                const td = document.createElement('td');
+                td.textContent = row[col];
+                tr.appendChild(td);
+            });
+            // Delete button
+            const tdDel = document.createElement('td');
+            const delBtn = document.createElement('button');
+            delBtn.className = 'btn btn-danger btn-sm';
+            delBtn.textContent = 'Delete';
+            delBtn.onclick = () => deleteRowFromTable(row);
+            tdDel.appendChild(delBtn);
+            tr.appendChild(tdDel);
+            tbody.appendChild(tr);
+        });
+        updateSelectedTableSortArrows();
+    }
+
+    function sortSelectedTable(col) {
+        if (currentSort.column === col) {
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSort.column = col;
+            currentSort.direction = 'desc';
+        }
+        renderSelectedTable(selectedTableData);
+    }
+
+    function updateSelectedTableSortArrows() {
+        selectedTableColumns.forEach(col => {
+            const arrow = document.getElementById('sort-arrow-' + col);
+            if (!arrow) return;
+            if (currentSort.column === col) {
+                arrow.innerHTML = currentSort.direction === 'asc' ? '&#8595;' : '&#8593;';
+                arrow.parentElement.classList.add('active');
+            } else {
+                arrow.innerHTML = '';
+                arrow.parentElement.classList.remove('active');
+            }
+        });
+    }
+
+    async function addRowToTable() {
+        // Gather input values
+        const row = {};
+        let allFilled = true;
+        selectedTableColumns.forEach((col, idx) => {
+            const val = document.getElementById(`addRow-${col}`).value;
+            if (val === '' || val === null) allFilled = false;
+            row[col] = val;
+        });
+        if (!allFilled) {
+            showAdminNotification('Please fill out all fields.', 'danger');
+            return;
+        }
+        // POST to API
+        try {
+            const response = await fetch(`/api/AdminApi/InsertRow/${selectedTableName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(row)
+            });
+            const text = await response.text();
+            if (response.ok) {
+                showAdminNotification('Row uploaded successfully!', 'success');
+                // Add new row to top of table
+                selectedTableData.unshift(row);
+                renderSelectedTable(selectedTableData);
+            } else {
+                showAdminNotification(text, 'danger');
+            }
+        } catch (err) {
+            showAdminNotification('Upload failed.', 'danger');
+        }
+    }
+
+    function showAdminNotification(msg, type) {
+        const box = document.getElementById('adminNotification');
+        box.textContent = msg;
+        box.className = `alert alert-${type} position-fixed top-0 end-0 m-3`;
+        box.classList.remove('d-none');
+        setTimeout(() => box.classList.add('d-none'), 5000);
+    }
+
+    async function deleteRowFromTable(row) {
+        // Not implemented: You can add a delete endpoint for arbitrary tables if needed
+        showAdminNotification('Delete functionality for arbitrary tables is not implemented yet.', 'warning');
+    }
+
+    function setSelectedTableLoading(isLoading) {
+        document.getElementById('selectedTableLoading').classList.toggle('d-none', !isLoading);
+    }
+
+    // On page load, fetch tables
+    fetchTables();
+</script>
+} 
