@@ -44,7 +44,12 @@
         <div class="col-md-6 mb-4">
             <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title">Form and Momentum Analysis</h5>
+                    <h5 class="card-title">
+                        Form and Momentum Analysis
+                        <span tabindex="0" data-bs-toggle="tooltip" title="Shows recent form and momentum: how a team's performance is trending over time.">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
+                    </h5>
                     <canvas id="formChart"></canvas>
                 </div>
             </div>
@@ -54,7 +59,12 @@
         <div class="col-md-6 mb-4">
             <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title">Expected Goals (xG) Analysis</h5>
+                    <h5 class="card-title">
+                        Expected Goals (xG) Analysis
+                        <span tabindex="0" data-bs-toggle="tooltip" title="Estimates quality of chances created: combines shots, shots on target, and possession.">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
+                    </h5>
                     <canvas id="xGChart"></canvas>
                 </div>
             </div>
@@ -64,7 +74,12 @@
         <div class="col-md-6 mb-4">
             <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title">Home vs Away Performance</h5>
+                    <h5 class="card-title">
+                        Home vs Away Performance
+                        <span tabindex="0" data-bs-toggle="tooltip" title="Compares team performance at home vs away: goals, conceded, and points per game.">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
+                    </h5>
                     <canvas id="venuePerformanceChart"></canvas>
                 </div>
             </div>
@@ -74,7 +89,12 @@
         <div class="col-md-6 mb-4">
             <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title">Attack vs Defense Efficiency</h5>
+                    <h5 class="card-title">
+                        Attack vs Defense Efficiency
+                        <span tabindex="0" data-bs-toggle="tooltip" title="Radar chart of attack and defense efficiency, form, and momentum for a holistic view.">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
+                    </h5>
                     <canvas id="efficiencyChart"></canvas>
                 </div>
             </div>
@@ -84,7 +104,12 @@
         <div class="col-md-6 mb-4">
             <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title">Recent Match Performance</h5>
+                    <h5 class="card-title">
+                        Recent Match Performance
+                        <span tabindex="0" data-bs-toggle="tooltip" title="Visualizes the team's most recent match results and trends.">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
+                    </h5>
                     <canvas id="recentPerformanceChart"></canvas>
                 </div>
             </div>
@@ -94,7 +119,12 @@
         <div class="col-md-6 mb-4">
             <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title">Performance Trends</h5>
+                    <h5 class="card-title">
+                        Performance Trends
+                        <span tabindex="0" data-bs-toggle="tooltip" title="Shows trends in key performance metrics over time.">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
+                    </h5>
                     <canvas id="trendsChart"></canvas>
                 </div>
             </div>
@@ -104,7 +134,12 @@
         <div class="col-12 mb-4" id="comparisonSection" style="display: none;">
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">Team Comparison</h5>
+                    <h5 class="card-title">
+                        Team Comparison
+                        <span tabindex="0" data-bs-toggle="tooltip" title="Side-by-side comparison of two teams' key metrics and efficiency.">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
+                    </h5>
                     <div class="row">
                         <div class="col-md-6">
                             <canvas id="comparisonChart"></canvas>
@@ -237,7 +272,12 @@
                 <div class="col-md-3">
                     <div class="card bg-light">
                         <div class="card-body text-center">
-                            <h6 class="card-subtitle mb-2 text-muted">Form Score</h6>
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                Form Score
+                                <span tabindex="0" data-bs-toggle="tooltip" title="Recent weighted performance: weighted sum of (goals scored - conceded) over last 10 games">
+                                    <i class="bi bi-info-circle"></i>
+                                </span>
+                            </h6>
                             <h3 class="card-title">${metrics.formScore.toFixed(2)}</h3>
                             <p class="card-text small">${metrics.formScore > 0 ? 'Positive' : 'Negative'} form</p>
                         </div>
@@ -246,7 +286,12 @@
                 <div class="col-md-3">
                     <div class="card bg-light">
                         <div class="card-body text-center">
-                            <h6 class="card-subtitle mb-2 text-muted">Momentum</h6>
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                Momentum
+                                <span tabindex="0" data-bs-toggle="tooltip" title="Change in form: Form Score (last 5) - Form Score (previous 5)">
+                                    <i class="bi bi-info-circle"></i>
+                                </span>
+                            </h6>
                             <h3 class="card-title">${metrics.momentum.toFixed(2)}</h3>
                             <p class="card-text small">${metrics.momentum > 0 ? 'Improving' : 'Declining'} trend</p>
                         </div>
@@ -255,7 +300,12 @@
                 <div class="col-md-3">
                     <div class="card bg-light">
                         <div class="card-body text-center">
-                            <h6 class="card-subtitle mb-2 text-muted">Attack Efficiency</h6>
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                Attack Efficiency
+                                <span tabindex="0" data-bs-toggle="tooltip" title="Goals per shot: average (goals/shots) over last 10 games">
+                                    <i class="bi bi-info-circle"></i>
+                                </span>
+                            </h6>
                             <h3 class="card-title">${(metrics.attackEfficiency * 100).toFixed(1)}%</h3>
                             <p class="card-text small">Goals per shot</p>
                         </div>
@@ -264,13 +314,24 @@
                 <div class="col-md-3">
                     <div class="card bg-light">
                         <div class="card-body text-center">
-                            <h6 class="card-subtitle mb-2 text-muted">Defense Efficiency</h6>
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                Defense Efficiency
+                                <span tabindex="0" data-bs-toggle="tooltip" title="Goals prevented per shot: average (1 - (conceded/shots faced)) over last 10 games">
+                                    <i class="bi bi-info-circle"></i>
+                                </span>
+                            </h6>
                             <h3 class="card-title">${(metrics.defenseEfficiency * 100).toFixed(1)}%</h3>
                             <p class="card-text small">Goals prevented per shot</p>
                         </div>
                     </div>
                 </div>
             `;
+            // Initialize Bootstrap tooltips
+            var tooltipTriggerList = [].slice.call(container.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+                new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+            initAllTooltips();
         }
 
         // Update all charts
@@ -567,5 +628,14 @@
 
         // Initialize on page load
         loadTeamsFromCacheOrApi();
+
+        // After all dynamic content and charts are rendered, re-initialize Bootstrap tooltips for all info icons
+        function initAllTooltips() {
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+                new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        }
+        document.addEventListener('DOMContentLoaded', initAllTooltips);
     </script>
 } 
