@@ -1,0 +1,38 @@
+name: Build & Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]       # redeploy every time you push to main
+  workflow_dispatch:         # allow manual reruns
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write            # needed for deployment
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    # ——— build your static site ———
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+    - run: dotnet publish -c Release -o out
+      # adjust the path above to your solution / SSG
+
+    # ——— upload the result as a Pages artifact ———
+    - uses: actions/upload-pages-artifact@v2       # bundles output
+      with:
+        path: out/wwwroot                          # folder to publish
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - uses: actions/deploy-pages@v4                # puts it on gh-pages
