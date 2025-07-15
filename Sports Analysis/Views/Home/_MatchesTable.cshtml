@@ -1,0 +1,16 @@
+@model List<Sports_Analysis.Models.FootballMatch>
+
+@foreach (var match in Model)
+{
+    <tr>
+        <td>@match.Date.ToString("yyyy-MM-dd")</td>
+        <td>@match.Season</td>
+        <td>@match.HomeTeam</td>
+        <td>@match.HomeGoals - @match.AwayGoals</td>
+        <td>@match.AwayTeam</td>
+        <td>@match.HomePossession%</td>
+        <td>@match.AwayPossession%</td>
+        <td>@match.HomeShots</td>
+        <td>@match.AwayShots</td>
+    </tr>
+} 

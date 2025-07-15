@@ -11,4 +11,10 @@ namespace Sports_Analysis.Data
         }
         public DbSet<Stats> Stats { get; set; }
     }
+    public class FootballDbContext : DbContext
+    {
+        public FootballDbContext(DbContextOptions<FootballDbContext> options) : base(options) { }
+
+        public DbSet<FootballMatch> FootballMatches { get; set; }
+    }
 }
