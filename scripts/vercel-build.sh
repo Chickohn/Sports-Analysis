@@ -8,10 +8,9 @@ curl -sSL https://dot.net/v1/dotnet-install.sh \
 export PATH="$HOME/.dotnet:$PATH"
 
 # 2) Publish the solution as static files
-dotnet publish SportsAnalysis.sln \
-    -c Release \
-    -p:PublishTrimmed=true \
-    -o build
+dotnet publish "Sports Analysis/Sports Analysis.csproj" \
+  -c Release \
+  -o build
 
 # 3) Move static assets where Vercel expects them
 mkdir -p .vercel/output/static
